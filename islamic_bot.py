@@ -1,281 +1,263 @@
 import os
 import json
-import logging
 import random
+import logging
 import pytz
+
 from datetime import datetime
+
 from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    filters,
     ContextTypes,
+    filters,
 )
 
-# ============================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-DHAKA_TZ = pytz.timezone("Asia/Dhaka")
-CHATS_FILE = "chats.json"
-# ============================================================
+# ==================================================
+# SETTINGS
+# ==================================================
 
-logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+DHAKA = pytz.timezone("Asia/Dhaka")
+
+CHAT_FILE = "chats.json"
+
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
 logger = logging.getLogger(__name__)
 
+# ==================================================
+# LOAD / SAVE CHAT IDS
+# ==================================================
 
-# ─────────────────────────────────────────
-# গ্রুপ ID সেভ/লোড — রিস্টার্ট হলেও ভুলবে না
-# ─────────────────────────────────────────
 def load_chats():
-    if os.path.exists(CHATS_FILE):
-        with open(CHATS_FILE, "r") as f:
-            return set(json.load(f))
+    try:
+        if os.path.exists(CHAT_FILE):
+            with open(CHAT_FILE, "r") as f:
+                return set(json.load(f))
+    except:
+        pass
+
     return set()
 
-def save_chats(chats):
-    with open(CHATS_FILE, "w") as f:
-        json.dump(list(chats), f)
+
+def save_chats():
+    with open(CHAT_FILE, "w") as f:
+        json.dump(list(active_chats), f)
+
 
 active_chats = load_chats()
 
+# ==================================================
+# MESSAGES
+# ==================================================
 
-# ─────────────────────────────────────────
-# নামাজের মেসেজ — প্রতিটায় ১০টা ভিন্ন
-# ─────────────────────────────────────────
 PRAYER_MESSAGES = {
     "fajr": [
-        "🌅 আল্লাহু আকবার! ফজরের সময় হয়েছে!\n🕌 উঠুন, অজু করুন, নামাজ পড়ুন!\n📊 নামাজ শেষে YT Studio খুলুন — রাতের ভিউ দেখুন!\n💪 যে ফজরে ওঠে, সে জীবনে পিছিয়ে পড়ে না!",
-        "🌄 সুবহানাল্লাহ! ফজরের আযান হয়েছে!\n🕌 নামাজ পড়ে দিন শুরু করুন — বরকতময় সকাল!\n🎬 নামাজের পর স্ক্রিপ্ট লিখুন — সকালের মাথা সবচেয়ে ক্রিয়েটিভ!\n🚀 সফল Creator-রা ফজরের পর কাজ শুরু করেন!",
-        "⭐ ফজরের ওয়াক্ত! আল্লাহ ডাকছেন!\n🕌 নামাজ পড়ুন, দোয়া করুন!\n📈 আজকের ভিডিওর জন্য আল্লাহর কাছে বরকত চাইন!\n🔥 ফজর + কাজ = অপ্রতিরোধ্য সাফল্য!",
-        "🌙➡️🌅 রাত শেষ, নতুন দিন! ফজরের সময়!\n🕌 আল্লাহর দরবারে হাজির হন!\n💻 নামাজের পর Thumbnail নিয়ে কাজ করুন!\n✨ প্রতিটা ফজর = নতুন সুযোগ, কাজে লাগান!",
-        "🌤️ আযান দিয়েছে! ফজরের নামাজের সময়!\n🕌 বিছানা ছাড়ুন, আল্লাহর কাছে যান!\n📊 নামাজ শেষে Analytics চেক করুন!\n💡 আজকে একটা Viral ভিডিও বানানোর নিয়ত করুন!",
-        "🌅 ফজরের আলো ফুটেছে! উঠুন ভাইয়েরা!\n🕌 নামাজ পড়ে আল্লাহর রহমত নিন!\n🎯 নামাজের পর আজকের Plan করুন!\n💪 ভোরের মেহনত সারাদিনের বরকত আনে!",
-        "⭐ সুবহে সাদেক! ফজরের ডাক!\n🕌 নামাজ পড়ুন — দিনটা সুন্দর হবে!\n🎬 নামাজের পর ভিডিও আইডিয়া লিখুন!\n🌟 MrBeast ভোরে কাজ করেন — আপনিও করুন!",
-        "🌄 নতুন দিনের শুরু! ফজরের সময়!\n🕌 আল্লাহকে স্মরণ করে দিন শুরু করুন!\n📊 নামাজের পর YT Studio চেক করুন!\n🔥 যে ভোরে ওঠে, সে এগিয়ে থাকে!",
-        "🌅 ফজরের আযান! আল্লাহু আকবার!\n🕌 উঠুন, নামাজ পড়ুন, বরকত নিন!\n💡 নামাজের পর একটা Short ভিডিও বানান!\n✨ ছোট কাজ + ধারাবাহিকতা = বড় Channel!",
-        "⭐ ভোর হলো! ফজরের নামাজের ডাক!\n🕌 নামাজ পড়ে আল্লাহর শুকরিয়া করুন!\n🚀 নামাজের পর Comment reply দিন!\n💪 Community বাড়ান — Channel এগিয়ে যাবে!",
+        "🌅 ফজরের সময় হয়েছে!\n🕌 নামাজ পড়ুন ভাই!",
+        "⭐ উঠুন! ফজরের আযান হয়েছে!"
     ],
+
     "dhuhr": [
-        "☀️ যোহরের সময়! একটু থামুন ভাইয়েরা!\n🕌 কাজ রেখে নামাজ পড়ুন — আল্লাহ বরকত দেবেন!\n💻 নামাজের পর Thumbnail নিয়ে কাজ করুন!\n🔥 বিরতি নিন, রিফ্রেশ হন, আরো ভালো করুন!",
-        "🌞 দুপুর হলো — যোহরের নামাজ!\n🕌 ৫ মিনিট সব বন্ধ রেখে নামাজ পড়ুন!\n📊 নামাজের পর Analytics দেখুন!\n🎯 কোন ভিডিও ভালো চলছে বুঝুন!",
-        "⏰ যোহরের আযান! কাজ পজ করুন!\n🕌 নামাজ পড়ুন, মন শান্ত করুন!\n🎬 নামাজের পর আজকের টার্গেট রিভিউ করুন!\n🚀 নামাজ পড়ে কাজ করলে বরকত হয়!",
-        "🌤️ দুপুরের রোদে যোহরের ডাক!\n🕌 আল্লাহর দরবারে হাজির হন!\n💡 নামাজের পর Comment reply দিন!\n📈 Engagement বাড়লে YouTube Push করবে!",
-        "☀️ যোহর পড়ার সময়! উঠুন ভাইয়েরা!\n🕌 নামাজ পড়ুন, শুকরিয়া আদায় করুন!\n🎯 নামাজের পর SEO নিয়ে পড়ুন!\n💪 ভালো Title + Thumbnail = বেশি Click!",
-        "🌞 দুপুর গড়িয়ে গেছে — যোহর পড়েছেন?\n🕌 এখনই নামাজ পড়ুন!\n🎬 নামাজের পর Video Script লিখুন!\n✨ কাজে বরকত আসবে ইনশাআল্লাহ!",
-        "☀️ যোহরের আযান দিয়েছে!\n🕌 নামাজ পড়ুন, দোয়া করুন!\n📊 নামাজের পর Subscriber বাড়ানোর Plan করুন!\n🔥 প্রতিদিন একটু এগোলেই বড় হওয়া যায়!",
-        "🌤️ যোহরের সময়! ব্রেক নিন!\n🕌 নামাজ পড়ে মন ও শরীর রিফ্রেশ করুন!\n💡 নামাজের পর নতুন Video Idea খুঁজুন!\n🚀 ক্রিয়েটিভিটি বিরতির পরেই আসে!",
-        "☀️ দুপুরের ডাক! যোহরের নামাজ!\n🕌 আল্লাহকে স্মরণ করুন!\n🎯 নামাজের পর আজকের বাকি Plan করুন!\n💪 আল্লাহর উপর ভরসা রেখে কাজ করুন!",
-        "🌞 যোহর হয়েছে! নামাজ পড়েছেন?\n🕌 দ্রুত নামাজ পড়ুন!\n📈 নামাজের পর আজকের Video কতটা Promote হলো দেখুন!\n✨ মেহনত + দোয়া = সাফল্য!",
+        "☀️ যোহরের সময় হয়েছে!\n🕌 নামাজ পড়ুন!",
+        "🌞 কাজ থামান, যোহর পড়ুন!"
     ],
+
     "asr": [
-        "🌤️ আসরের সময় হয়েছে!\n🕌 নামাজ পড়ে নিন — দিন শেষ হওয়ার আগে!\n🎬 নামাজের পর ভিডিও এডিটিং শেষ করুন!\n💪 আর কয়েক ঘন্টা — আজকের টার্গেট পূরণ করুন!",
-        "🌅 আসরের আযান দিয়েছে!\n🕌 নামাজ পড়ুন, আল্লাহর শুকরিয়া করুন!\n📈 নামাজের পর Comment reply দিন!\n🔥 Consistency-ই YouTube সাফল্যের চাবিকাঠি!",
-        "⭐ আসরের নামাজের ওয়াক্ত!\n🕌 উঠুন, নামাজ পড়ুন!\n💻 নামাজের পর আগামীকালের ভিডিও প্ল্যান করুন!\n🌟 প্রতিদিন একটু এগোলেই বড় YouTuber হওয়া যায়!",
-        "🕌 আসর পড়ার সময়! থামুন একটু!\n🤲 নামাজ পড়ুন, দোয়া করুন!\n🎬 নামাজের পর Video Script লিখুন!\n🚀 আজকে না করলে কাল পিছিয়ে পড়বেন!",
-        "🌤️ আসরের আযান! নামাজের ডাক!\n🕌 কাজ রেখে নামাজ পড়ুন!\n📊 নামাজের পর YT Studio চেক করুন!\n💡 আজকের ভিডিও কেমন চলছে দেখুন!",
-        "🌇 বিকেল হলো! আসরের সময়!\n🕌 নামাজ পড়ে আল্লাহর কাছে সাহায্য চাইন!\n🎯 নামাজের পর Thumbnail বানান!\n💪 ভালো Thumbnail = বেশি Click = বেশি View!",
-        "⭐ আসরের ডাক! নামাজ পড়ুন!\n🕌 আল্লাহর দরবারে হাজির হন!\n📈 নামাজের পর Social Media-তে Video শেয়ার করুন!\n🔥 Promotion = বেশি দর্শক!",
-        "🌤️ আসর হয়েছে! নামাজ পড়েছেন?\n🕌 এখনই পড়ুন!\n💡 নামাজের পর Channel-এর জন্য নতুন Strategy ভাবুন!\n✨ পরিকল্পনা + কাজ = সাফল্য!",
-        "🌇 বিকেলের আলোয় আসরের ডাক!\n🕌 নামাজ পড়ুন, মন শান্ত করুন!\n🎬 নামাজের পর আজকের শেষ Shoot করুন!\n🚀 সন্ধ্যার আগেই কাজ শেষ করুন!",
-        "⭐ আসরের সময়! ব্রেক নিন!\n🕌 নামাজ পড়ে রিফ্রেশ হন!\n📊 নামাজের পর আজকের Performance দেখুন!\n💪 আলহামদুলিল্লাহ — এগিয়ে যাচ্ছেন!",
+        "🌤️ আসরের সময় হয়েছে!",
+        "⭐ আসরের নামাজ পড়ুন!"
     ],
+
     "maghrib": [
-        "🌇 মাগরিবের সময়! সন্ধ্যা হলো!\n🕌 দ্রুত নামাজ পড়ুন — সময় কম!\n📊 নামাজের পর আজকের Analytics দেখুন!\n🎯 আজকে কতটা এগোলেন হিসাব করুন!",
-        "🌆 মাগরিবের আযান! সারাদিনের পর আল্লাহর কাছে!\n🕌 নামাজ পড়ুন, দোয়া করুন!\n🎬 নামাজের পর শেষ কাজটা গুছিয়ে নিন!\n💡 সন্ধ্যার পরিকল্পনা = কালকের সাফল্য!",
-        "🌃 সন্ধ্যা হলো — মাগরিবের নামাজ!\n🕌 নামাজ পড়ুন!\n📈 নামাজের পর Subscriber count দেখুন!\n🔥 আজকে একটু বাড়লেও আলহামদুলিল্লাহ!",
-        "🌇 মাগরিবের ডাক! আল্লাহু আকবার!\n🕌 দিনের শেষে আল্লাহর দরবারে হাজির হন!\n💻 নামাজের পর আগামীকালের Thumbnail বানান!\n🚀 রাতের কাজ = সকালের সাফল্য!",
-        "🌆 মাগরিব হয়েছে! নামাজের সময়!\n🕌 নামাজ পড়ুন, শুকরিয়া আদায় করুন!\n🎯 নামাজের পর Video Description লিখুন!\n💪 ছোট ছোট কাজই বড় Channel বানায়!",
-        "🌇 সন্ধ্যা নামলো! মাগরিবের আযান!\n🕌 নামাজ পড়ুন, দোয়া করুন!\n📊 নামাজের পর আজকের View কত হলো দেখুন!\n✨ আলহামদুলিল্লাহ — প্রতিটা View আল্লাহর রহমত!",
-        "🌆 মাগরিবের ওয়াক্ত! দ্রুত পড়ুন!\n🕌 সময় কম — এখনই নামাজ পড়ুন!\n🎬 নামাজের পর আগামীকালের Content Plan করুন!\n🔥 Planning = Success!",
-        "🌃 রাত হচ্ছে! মাগরিবের নামাজ!\n🕌 আল্লাহকে স্মরণ করুন!\n💡 নামাজের পর Channel-এর জন্য দোয়া করুন!\n🚀 আল্লাহর রহমতে সব সম্ভব!",
-        "🌇 মাগরিব! সন্ধ্যার ইবাদতের সময়!\n🕌 নামাজ পড়ুন!\n📈 নামাজের পর Social Media-তে Post করুন!\n💪 রাতের Engagement দিনের চেয়ে বেশি!",
-        "🌆 মাগরিবের আযান দিয়েছে!\n🕌 নামাজ পড়ে আল্লাহর শুকরিয়া করুন!\n🎯 নামাজের পর আজকের কাজের Summary লিখুন!\n✨ প্রতিদিন শেখা = প্রতিদিন এগিয়ে যাওয়া!",
+        "🌇 মাগরিবের আযান হয়েছে!",
+        "🌆 দ্রুত মাগরিব পড়ুন!"
     ],
+
     "isha": [
-        "🌙 ইশার সময়! রাত শুরু হলো!\n🕌 দিনের শেষ নামাজ পড়ুন!\n💻 নামাজের পর আগামীকালের ভিডিও শিডিউল করুন!\n😴 কাজ শেষে তাড়াতাড়ি ঘুমান — ফজরে উঠতে হবে!",
-        "⭐ ইশার আযান! দিনের শেষ ইবাদত!\n🕌 নামাজ পড়ুন, চ্যানেলের জন্য দোয়া করুন!\n📊 আজকের পুরো Analytics রিভিউ করুন!\n🌙 রাত ১২টার আগে ঘুমান — সফল Creator-দের রুটিন!",
-        "🌟 ইশার নামাজের ওয়াক্ত!\n🕌 নামাজ পড়ে রাতের কাজ শুরু করুন!\n🎬 রাতে Script লিখুন — সকালে Shoot করুন!\n💪 আজকে ভালো কাজ করেছেন — আলহামদুলিল্লাহ!",
-        "🌙 ইশার ডাক! আল্লাহু আকবার!\n🕌 নামাজ পড়ুন, দোয়া করুন!\n📈 আজকের শেষ কাজ — কালকের Content Plan করুন!\n🔥 যে রাতে প্ল্যান করে, সে সকালে এগিয়ে থাকে!",
-        "⭐ ইশার নামাজ! দিন শেষ হচ্ছে!\n🕌 আল্লাহর কাছে মাথা নত করুন!\n💡 নামাজের পর আগামীকালের Video Idea লিখুন!\n🌟 আল্লাহর রহমতে আপনার Channel বড় হবেই!",
-        "🌙 রাত হয়েছে! ইশার সময়!\n🕌 নামাজ পড়ুন, শান্তি নিন!\n🎯 নামাজের পর আজকের ভুল থেকে শিখুন!\n✨ প্রতিটা দিন নতুন সুযোগ!",
-        "⭐ ইশার আযান! রাতের ইবাদত!\n🕌 নামাজ পড়ে আল্লাহর কাছে সাহায্য চাইন!\n📊 নামাজের পর Competitor Analysis করুন!\n💪 জানুন — তারপর ভালো করুন!",
-        "🌟 ইশার সময়! দিনের সমাপ্তি!\n🕌 নামাজ পড়ুন, দোয়া করুন!\n🎬 নামাজের পর আগামীকালের Shoot-এর জন্য Ready হন!\n🚀 Preparation = Success!",
-        "🌙 ইশার নামাজ পড়েছেন?\n🕌 এখনই পড়ুন — দেরি করবেন না!\n💡 নামাজের পর একটা Motivational Video দেখুন!\n🔥 Inspiration নিন, কাজে লাগান!",
-        "⭐ ইশার ডাক! আল্লাহ ডাকছেন!\n🕌 নামাজ পড়ে রাত শেষ করুন!\n📈 আগামীকাল আরো ভালো করার প্রতিজ্ঞা করুন!\n✨ আলহামদুলিল্লাহ — আজকেও এগিয়ে গেলেন!",
-    ],
-    "jummah": [
-        "🕌✨ জুম্মার মোবারক! আজ পবিত্র শুক্রবার!\n📿 জুম্মার নামাজ মিস করবেন না!\n🤲 নামাজে চ্যানেলের জন্য বিশেষ দোয়া করুন!\n📈 জুম্মার দিনে Special Video দিন — ভিউ বেশি হয়!",
-        "🌟 জুম্মা মোবারক ভাইয়েরা!\n🕌 আজকের সেরা ইবাদত — জুম্মার নামাজ!\n💫 নামাজের পর একটা ইসলামিক Content বানান!\n🚀 জুম্মার বরকতে Channel এগিয়ে যাক — আমিন!",
-        "✨ আল্লাহু আকবার! জুম্মার দিন এলো!\n🕌 জুম্মার খুতবা শুনুন, নামাজ পড়ুন!\n📊 এই পবিত্র দিনে Channel-এর জন্য দোয়া করুন!\n💪 জুম্মার পর নতুন উদ্যমে কাজ শুরু করুন!",
-        "🕌 জুম্মা মোবারক! সেরা দিন!\n📿 জুম্মার নামাজে যান — দেরি করবেন না!\n🎬 জুম্মার পর একটা Special Video বানান!\n🌟 এই পবিত্র দিনে আল্লাহর রহমত নিন!",
-        "✨ শুক্রবার এলো! জুম্মা মোবারক!\n🕌 জুম্মার নামাজ পড়ুন — সেরা ইবাদত!\n💡 নামাজের পর Channel-এর জন্য নতুন Strategy ভাবুন!\n🚀 জুম্মার বরকতে সব কাজ সহজ হোক!",
-    ],
+        "🌙 ইশার সময় হয়েছে!",
+        "⭐ ইশার নামাজ পড়ুন!"
+    ]
 }
 
-# ─────────────────────────────────────────
-# ঘন্টার মোটিভেশন — ২০টা ভিন্ন মেসেজ
-# ─────────────────────────────────────────
-HOURLY_MESSAGES = [
-    "⏰ ঘড়িতে {time} বাজলো!\n🎬 এই মুহূর্তে কী করছেন? ভিডিও বানাচ্ছেন তো?\n📈 প্রতি ঘন্টা মূল্যবান — একটু এগিয়ে যান!\n💪 আলহামদুলিল্লাহ, সুযোগ আছে — কাজে লাগান!",
-    "🕐 {time} হলো! সময় চলে যাচ্ছে!\n🚀 YouTube-এ সফল হতে চাইলে এখনই কাজ করুন!\n🎯 আজকের টার্গেট পূরণ হয়েছে?\n✨ ছোট ছোট পদক্ষেপই বড় সাফল্য আনে!",
-    "⌚ {time} বাজে! থামুন, ভাবুন!\n💡 আজকে নতুন কী শিখলেন YouTube সম্পর্কে?\n📊 Analytics দেখুন — কোন Video ভালো চলছে?\n🌟 আল্লাহ সুযোগ দিয়েছেন, কাজে লাগান!",
-    "🔔 {time}! নতুন ঘন্টা শুরু!\n🎬 এই ঘন্টায় একটা কাজ শেষ করুন!\n📈 Consistency = YouTube সাফল্য!\n💪 বিসমিল্লাহ বলে শুরু করুন — বরকত হবে!",
-    "⏳ {time} হয়ে গেল! সময় থামছে না!\n🚀 আজকে কতটা এগোলেন?\n🎯 একটা ভালো Thumbnail বানান এখনই!\n🤲 আল্লাহর উপর ভরসা + কাজ = সাফল্য!",
-    "🌟 {time}! মোটিভেশন টাইম!\n💻 MrBeast প্রতিদিন কাজ করেন — আপনিও করুন!\n📊 আজকে একটা নতুন Video Idea লিখুন!\n✨ আলহামদুলিল্লাহ — আপনার Channel একদিন বড় হবেই!",
-    "⏰ {time}! কেউ ঘুমাচ্ছে, কেউ কাজ করছে!\n🎬 আপনি কোন দলে?\n📈 Video আপলোড করুন — দর্শক অপেক্ষা করছে!\n💪 মাশাআল্লাহ — আপনি পারবেন!",
-    "🕑 {time}! ব্রেক নিন, আবার শুরু করুন!\n☕ একটু পানি খান, স্ট্রেচ করুন!\n🎯 পরের ঘন্টায় কী করবেন ঠিক করুন!\n🌙 আল্লাহর রহমতে আজকের কাজ সম্পন্ন হোক!",
-    "🔥 {time} বাজলো! এনার্জি কেমন আছে?\n🎬 একটা Short বানান — ১০ মিনিটেই হবে!\n📊 Short = দ্রুত Subscriber বাড়ানোর উপায়!\n💡 সুবহানাল্লাহ — প্রতিটা মিনিট দামি!",
-    "⚡ {time}! এখন কী করছেন?\n🚀 যদি কাজ না করেন — এখনই শুরু করুন!\n🎯 আজকের একটা Goal লিখুন এবং পূরণ করুন!\n💪 আল্লাহ মেহনতকারীকে ভালোবাসেন!",
-    "🌟 {time} বাজে! নতুন ঘন্টা, নতুন সুযোগ!\n🎬 Video Script-এর একটা অংশ লিখুন!\n📈 ধীরে ধীরে হলেও এগিয়ে যাচ্ছেন!\n✨ আল্লাহর রহমতে আপনি সফল হবেন — ইনশাআল্লাহ!",
-    "⏰ {time}! YouTube Journey কেমন চলছে?\n💻 আজকে Comment Section দেখুন!\n🎯 Audience কী বলছে শুনুন — তারপর ভিডিও বানান!\n🔥 Community = Loyal Subscriber!",
-    "🕒 {time} হলো! Focus করুন!\n🎬 Phone রাখুন, কাজে মনোযোগ দিন!\n📊 এক ঘন্টা Full Focus = অনেক কাজ শেষ!\n💡 বিসমিল্লাহ — শুরু করুন!",
-    "⌚ {time}! সময় কিন্তু ফেরত আসে না!\n🚀 আজকে একটা নতুন Skill শিখুন!\n🎯 SEO, Thumbnail বা Editing — যেটা দরকার!\n🌟 প্রতিদিন একটু উন্নতি = বড় পরিবর্তন!",
-    "🔔 {time} বাজলো! Check-in টাইম!\n🎬 আজকের Plan-এর কতটা হলো?\n📈 না হলে এখনই শুরু করুন!\n💪 আল্লাহ চেষ্টাকারীকে সাহায্য করেন!",
-    "⭐ {time}! Inspiration টাইম!\n💡 আপনার Favorite YouTuber কীভাবে শুরু করেছিলেন?\n🎬 তারাও একদিন আপনার মতো ছিলেন!\n🚀 চেষ্টা চালিয়ে যান — সাফল্য আসবেই!",
-    "🌟 {time} বাজে! Performance দেখুন!\n📊 YT Studio খুলুন — আজকের View কত?\n🎯 ভালো হলে আলহামদুলিল্লাহ, খারাপ হলে শিখুন!\n💪 প্রতিটা Video = একটা অভিজ্ঞতা!",
-    "⏰ {time}! টিম চেক-ইন!\n🎬 সবাই কাজ করছেন তো?\n📈 একসাথে এগিয়ে গেলে সবাই সফল হবেন!\n✨ আল্লাহ আমাদের সবাইকে সফল করুন — আমিন!",
-    "🔥 {time} বাজলো! জোশ আছে?\n🚀 আজকে একটা Viral Idea আছে মাথায়?\n🎬 এখনই লিখে রাখুন — ভুলে যাবেন!\n💡 ভালো Idea + কাজ = বড় Channel!",
-    "⚡ {time}! শেষ টানের সময়!\n🎯 আজকের বাকি কাজ শেষ করুন!\n📊 রাতে ঘুমানোর আগে কাল কী করবেন ঠিক করুন!\n🌟 আলহামদুলিল্লাহ — আজকেও এগিয়ে গেলেন!",
+HOURLY = [
+    "⏰ নতুন ঘন্টা শুরু!\n💪 কাজ চালিয়ে যান!",
+    "🚀 YouTube এ সফল হতে কাজ করুন!",
+    "🎬 আজকের ভিডিও শেষ করেছেন?"
 ]
 
+# ==================================================
+# PRAYER TIMES
+# ==================================================
 
-# ─────────────────────────────────────────
-# ঢাকার নামাজের সময় (মাস অনুযায়ী)
-# ─────────────────────────────────────────
 def get_prayer_times():
-    month = datetime.now(DHAKA_TZ).month
-    schedule = {
-        1:  {"fajr":(5,15), "dhuhr":(12,15), "asr":(15,30), "maghrib":(17,45), "isha":(19,0)},
-        2:  {"fajr":(5,10), "dhuhr":(12,15), "asr":(15,40), "maghrib":(18,0),  "isha":(19,15)},
-        3:  {"fajr":(4,55), "dhuhr":(12,10), "asr":(15,45), "maghrib":(18,15), "isha":(19,25)},
-        4:  {"fajr":(4,35), "dhuhr":(12,5),  "asr":(15,50), "maghrib":(18,25), "isha":(19,35)},
-        5:  {"fajr":(4,15), "dhuhr":(11,55), "asr":(15,55), "maghrib":(18,40), "isha":(19,50)},
-        6:  {"fajr":(4,5),  "dhuhr":(11,50), "asr":(16,0),  "maghrib":(18,50), "isha":(20,0)},
-        7:  {"fajr":(4,10), "dhuhr":(11,55), "asr":(16,0),  "maghrib":(18,50), "isha":(20,0)},
-        8:  {"fajr":(4,25), "dhuhr":(12,0),  "asr":(15,55), "maghrib":(18,40), "isha":(19,50)},
-        9:  {"fajr":(4,45), "dhuhr":(12,0),  "asr":(15,45), "maghrib":(18,20), "isha":(19,30)},
-        10: {"fajr":(5,0),  "dhuhr":(12,0),  "asr":(15,30), "maghrib":(18,0),  "isha":(19,10)},
-        11: {"fajr":(5,15), "dhuhr":(12,0),  "asr":(15,20), "maghrib":(17,45), "isha":(19,0)},
-        12: {"fajr":(5,20), "dhuhr":(12,10), "asr":(15,20), "maghrib":(17,40), "isha":(18,55)},
+
+    return {
+        "fajr": (4, 15),
+        "dhuhr": (12, 0),
+        "asr": (15, 45),
+        "maghrib": (18, 30),
+        "isha": (19, 45),
     }
-    return schedule.get(month, schedule[1])
 
+# ==================================================
+# SEND MESSAGE TO ALL GROUPS
+# ==================================================
 
-# ─────────────────────────────────────────
-# নামাজের সময় চেক
-# ─────────────────────────────────────────
-async def check_prayer_times(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now(DHAKA_TZ)
-    hour, minute = now.hour, now.minute
-    weekday = now.weekday()
-    time_str = now.strftime("%I:%M %p")
+async def broadcast(app, text):
+
+    remove_list = []
+
+    for chat_id in active_chats:
+
+        try:
+            await app.bot.send_message(
+                chat_id=chat_id,
+                text=text
+            )
+
+        except Exception as e:
+
+            logger.error(f"Failed {chat_id}: {e}")
+
+            remove_list.append(chat_id)
+
+    for r in remove_list:
+        active_chats.discard(r)
+
+    save_chats()
+
+# ==================================================
+# CHECK PRAYER TIMES
+# ==================================================
+
+async def prayer_loop(context: ContextTypes.DEFAULT_TYPE):
+
+    now = datetime.now(DHAKA)
+
+    h = now.hour
+    m = now.minute
+
     prayers = get_prayer_times()
 
-    triggered = None
-    for name, (h, m) in prayers.items():
-        if hour == h and minute == m:
-            triggered = name
-            break
+    for prayer, (ph, pm) in prayers.items():
 
-    if not triggered:
-        return
+        if h == ph and m == pm:
 
-    if triggered == "dhuhr" and weekday == 4:
-        msg = random.choice(PRAYER_MESSAGES["jummah"])
-    else:
-        msg = random.choice(PRAYER_MESSAGES[triggered])
+            msg = random.choice(
+                PRAYER_MESSAGES[prayer]
+            )
 
-    msg += f"\n\n🕐 সময়: {time_str} (ঢাকা)"
+            msg += f"\n\n🕐 {now.strftime('%I:%M %p')}"
 
-    for chat_id in list(active_chats):
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=msg)
-        except Exception as e:
-            logger.warning(f"Error sending to {chat_id}: {e}")
-            active_chats.discard(chat_id)
-            save_chats(active_chats)
+            await broadcast(context.application, msg)
 
+# ==================================================
+# HOURLY MOTIVATION
+# ==================================================
 
-# ─────────────────────────────────────────
-# ঘন্টার মোটিভেশন
-# ─────────────────────────────────────────
-async def send_hourly_motivation(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now(DHAKA_TZ)
+async def hourly_loop(context: ContextTypes.DEFAULT_TYPE):
+
+    now = datetime.now(DHAKA)
+
     if now.minute != 0:
         return
-    if now.hour >= 23 or now.hour < 4:
+
+    if now.hour < 4:
         return
 
-    prayers = get_prayer_times()
-    prayer_hours = [v[0] for v in prayers.values()]
-    if now.hour in prayer_hours:
+    msg = random.choice(HOURLY)
+
+    msg += f"\n\n🕐 {now.strftime('%I:%M %p')}"
+
+    await broadcast(context.application, msg)
+
+# ==================================================
+# TRACK CHATS
+# ==================================================
+
+async def track_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not update.effective_chat:
         return
 
-    time_str = now.strftime("%I:%M %p")
-    msg = random.choice(HOURLY_MESSAGES).format(time=time_str)
+    chat_id = update.effective_chat.id
 
-    for chat_id in list(active_chats):
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=msg)
-        except Exception as e:
-            logger.warning(f"Error sending to {chat_id}: {e}")
-            active_chats.discard(chat_id)
-            save_chats(active_chats)
+    if chat_id not in active_chats:
 
+        active_chats.add(chat_id)
 
-# ─────────────────────────────────────────
-# গ্রুপে মেসেজ এলে Chat ID সেভ
-# ─────────────────────────────────────────
-async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.chat:
-        chat_id = update.message.chat.id
-        if chat_id not in active_chats:
-            active_chats.add(chat_id)
-            save_chats(active_chats)
-            logger.info(f"New chat: {chat_id}")
+        save_chats()
 
+        logger.info(f"New Chat Saved: {chat_id}")
 
-# ─────────────────────────────────────────
-# /start — একবার চালু করলেই হবে
-# ─────────────────────────────────────────
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat.id
+# ==================================================
+# START COMMAND
+# ==================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    chat_id = update.effective_chat.id
+
     active_chats.add(chat_id)
-    save_chats(active_chats)
 
-    prayers = get_prayer_times()
-    msg = (
-        "🕌 আসসালামু আলাইকুম! Islamic YouTube Bot চালু!\n\n"
-        "✅ নামাজের সময় অটো রিমাইন্ডার\n"
-        "✅ জুম্মার বিশেষ ঘোষণা\n"
-        "✅ প্রতি ঘন্টায় YouTube মোটিভেশন\n"
-        "✅ সম্পূর্ণ অটো — আপনাকে কিছু করতে হবে না!\n\n"
-        f"📅 আজকের নামাজের সময় (ঢাকা):\n"
-        f"🌅 ফজর: {prayers['fajr'][0]:02d}:{prayers['fajr'][1]:02d}\n"
-        f"☀️ যোহর: {prayers['dhuhr'][0]:02d}:{prayers['dhuhr'][1]:02d}\n"
-        f"🌤️ আসর: {prayers['asr'][0]:02d}:{prayers['asr'][1]:02d}\n"
-        f"🌇 মাগরিব: {prayers['maghrib'][0]:02d}:{prayers['maghrib'][1]:02d}\n"
-        f"🌙 ইশা: {prayers['isha'][0]:02d}:{prayers['isha'][1]:02d}\n\n"
-        "💪 আল্লাহর রহমতে আপনার Channel এগিয়ে যাক — আমিন!"
+    save_chats()
+
+    await update.message.reply_text(
+        "🕌 Islamic Reminder Bot Active!\n\n"
+        "✅ নামাজ Reminder\n"
+        "✅ Hourly Motivation\n"
+        "✅ Auto Working"
     )
-    await update.message.reply_text(msg)
 
+# ==================================================
+# MAIN
+# ==================================================
 
-# ─────────────────────────────────────────
-# মেইন
-# ─────────────────────────────────────────
 def main():
+
+    if not BOT_TOKEN:
+        print("BOT_TOKEN NOT FOUND")
+        return
+
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.job_queue.run_repeating(check_prayer_times, interval=60, first=10)
-    app.job_queue.run_repeating(send_hourly_motivation, interval=60, first=30)
+    # COMMANDS
+    app.add_handler(
+        CommandHandler("start", start)
+    )
 
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, track_chats))
+    # TRACK ALL MESSAGES
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            track_chat
+        )
+    )
 
-    print("🕌 Islamic YouTube Bot চালু!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # JOBS
+    app.job_queue.run_repeating(
+        prayer_loop,
+        interval=60,
+        first=5
+    )
 
+    app.job_queue.run_repeating(
+        hourly_loop,
+        interval=60,
+        first=10
+    )
+
+    print("🕌 BOT RUNNING...")
+
+    app.run_polling()
+
+# ==================================================
 
 if __name__ == "__main__":
     main()
